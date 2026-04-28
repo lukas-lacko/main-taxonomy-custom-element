@@ -15,6 +15,10 @@ app.use(express.json());
 
 app.post("/api/taxonomy-options", async (req, res) => {
     try {
+        res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.set("Pragma", "no-cache");
+        res.set("Expires", "0");
+
         const projectId = req.body.projectId;
         const itemCodename = req.body.itemCodename;
         const variantCodename = req.body.variantCodename;
@@ -38,6 +42,7 @@ app.post("/api/taxonomy-options", async (req, res) => {
 
         const response = await fetch(url, {
             method: "GET",
+            cache: "no-store",
             headers: {
                 Accept: "application/json",
                 Authorization: "Bearer " + previewApiToken,
