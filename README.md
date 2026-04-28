@@ -2,6 +2,8 @@
 
 Main Taxonomy Custom Element that allows selecting main taxonomy of related taxonomy element.
 
+<img width="1030" height="497" alt="main_taxonomy_selector" src="https://github.com/user-attachments/assets/f9cbfac6-68a1-4cb8-ba08-3a0190cd4b61" />
+
 This solution has two deployable parts:
 
 - `index.html` = the **Custom Element frontend** (host as a static file).
