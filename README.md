@@ -1,6 +1,17 @@
 # Main Taxonomy Custom Element + Proxy (Proof of Concept)
 
-Main Taxonomy Custom Element that allows selecting main taxonomy of related taxonomy element.
+This is essentially a **Main Taxonomy Selector**. It always works together with a **related Taxonomy element** and allows you to pick one “main” taxonomy from multiple selected ones.
+
+For example, if you need one main taxonomy for the web and another for the app on the same article, you can simply add **two instances of this custom element** to the content model.
+
+### How it works
+
+- The custom element **reads all selected taxonomy values** from the related Taxonomy element. It also watches changes in this selected list.
+- It lets you **select one of them as the “main” taxonomy**.
+- The element then **returns the codename** of the selected taxonomy.
+
+Because custom elements **can’t read taxonomy elements directly**, it uses the **Preview API** to fetch the taxonomy values.
+
 
 <img width="1030" height="497" alt="main_taxonomy_selector" src="https://github.com/user-attachments/assets/f9cbfac6-68a1-4cb8-ba08-3a0190cd4b61" />
 
