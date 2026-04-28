@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taxonomy Selector Custom Element</title>
+    <script src="https://app.kenticocloud.com/js-api/custom-element.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: transparent;
+            color: #242424;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        .disabled_overlay {
+            position: fixed;
+            inset: 0;
+            background: #777;
+            opacity: 0.1;
+            display: none;
+            z-index: 10;
+            cursor: not-allowed;
+        }
+
+        .wrapper {
+            border: 1px solid #d8d8d8;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .header {
+            padding: 12px 14px;
+            border-bottom: 1px solid #ececec;
+            background: #f8f8f8;
+        }
+
+        .header h2 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .content {
+            padding: 14px;
+        }
+
+        .status {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .status.error {
+            color: #c22a2a;
+        }
+
+        .options {
+            margin-top: 8px;
+            display: block;
+        }
+
+        .taxonomy-select {
+            width: 100%;
+            min-height: 36px;
+            padding: 8px 10px;
+            border: 1px solid #cfcfcf;
+            border-radius: 6px;
+            background: #fff;
+            color: #222;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .taxonomy-select:hover {
+            border-color: #8bb9ff;
+        }
+
+        .taxonomy-select:focus {
+            border-color: #4f8df7;
+            box-shadow: 0 0 0 2px rgba(79, 141, 247, 0.15);
+        }
+
+        .empty {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+            padding: 10px 12px;
+            border: 1px dashed #d8d8d8;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="disabled_overlay" id="disabledOverlay"></div>
+    <div class="wrapper">
+        <div class="header">
+            <h2>Main Taxonomy Selector</h2>
+        </div>
+        <div class="content">
+            <div id="status" class="status">Initializing...</div>
+            <div id="options" class="options"></div>
+            <div id="emptyState" class="empty" style="display:none;">No taxonomy values found.</div>
+        </div>
+    </div>
+
+    <script>
+        var disabledOverlay = document.getElementById("disabledOverlay");
+        var statusEl = document.getElementById("status");
+        var optionsEl = document.getElementById("options");
+        var emptyStateEl = document.getElementById("emptyState");
+
+        var isCustomElement = false;
+        var isDisabled = false;
+        var currentValue = null;
+        var taxonomyValues = [];
+        var contextData = null;
+        var configData = {};
+        var isLoading = false;
+        var hasPendingRefresh = false;
+        var hasObserverRegistration = false;
+        var changeRefreshTimeouts = [];
+
+        function setStatus(text, isError) {
+            statusEl.textContent = text;
+            if (isError) {
+                statusEl.classList.add("error");
+            } else {
+                statusEl.classList.remove("error");
+            }
+        }
+
+        function updateDisabled(disabled) {
+            isDisabled = disabled;
+            disabledOverlay.style.display = disabled ? "block" : "none";
+            var selectEl = document.getElementById("taxonomySelect");
+            if (selectEl) {
+                selectEl.disabled = disabled;
+            }
+        }
+
+        function updateSize() {
+            try {
+                var height = document.documentElement.scrollHeight;
+                if (isCustomElement) {
+                    CustomElement.setHeight(height);
+                }
+            } catch (error) {
+                console.warn("Could not update height:", error);
+            }
+        }
+
+        function parseConfig(configRaw) {
+            if (!configRaw) {
+                return {};
+            }
+            if (typeof configRaw === "object") {
+                return configRaw;
+            }
+            try {
+                return JSON.parse(configRaw);
+            } catch (error) {
+                throw new Error("Custom element config is not valid JSON.");
+            }
+        }
+
+        function buildProxyUrl(config) {
+            if (!config.proxyUrl) {
+                throw new Error("Missing proxyUrl in custom element config.");
+            }
+            return config.proxyUrl;
+        }
+
+        function extractTaxonomyValueArray(responseJson, taxonomyElementCodename) {
+            var elementKey = taxonomyElementCodename || "taxonomy_element";
+
+            if (responseJson && responseJson.items && responseJson.items.length > 0) {
+                var listElement = responseJson.items[0].elements && responseJson.items[0].elements[elementKey];
+                if (listElement && Array.isArray(listElement.value)) {
+                    return listElement.value;
+                }
+            }
+
+            if (responseJson && responseJson.item && responseJson.item.elements) {
+                var singleElement = responseJson.item.elements[elementKey];
+                if (singleElement && Array.isArray(singleElement.value)) {
+                    return singleElement.value;
+                }
+            }
+
+            return [];
+        }
+
+        function renderOptions() {
+            optionsEl.innerHTML = "";
+
+            if (!taxonomyValues.length) {
+                emptyStateEl.style.display = "block";
+                setStatus("Loaded. No options available.");
+                updateSize();
+                return;
+            }
+
+            emptyStateEl.style.display = "none";
+            setStatus("Select the main taxonomy:");
+
+            var selectEl = document.createElement("select");
+            selectEl.id = "taxonomySelect";
+            selectEl.className = "taxonomy-select";
+            selectEl.disabled = isDisabled;
+
+            taxonomyValues.forEach(function (term) {
+                var optionEl = document.createElement("option");
+                optionEl.value = term.codename;
+                optionEl.textContent = term.name || term.codename;
+                if (currentValue === term.codename) {
+                    optionEl.selected = true;
+                }
+                selectEl.appendChild(optionEl);
+            });
+
+            selectEl.addEventListener("change", function () {
+                currentValue = selectEl.value;
+                if (isCustomElement) {
+                    CustomElement.setValue(currentValue);
+                }
+            });
+
+            optionsEl.appendChild(selectEl);
+
+            updateSize();
+        }
+
+        async function loadTaxonomyValues(projectId, itemCodename, variantCodename, config) {
+            if (isLoading) {
+                hasPendingRefresh = true;
+                return;
+            }
+            isLoading = true;
+            setStatus("Loading taxonomy values...");
+            var taxonomyElementCodename = config.taxonomyElementCodename || "taxonomy_element";
+            if (!projectId || !itemCodename || !variantCodename) {
+                throw new Error("Missing projectId, item.codename, or variant.codename in Custom Element context.");
+            }
+            var url = buildProxyUrl(config);
+
+            var headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            };
+
+            var response = await fetch(url, {
+                method: "POST",
+                headers: headers,
+                body: JSON.stringify({
+                    projectId: projectId,
+                    itemCodename: itemCodename,
+                    variantCodename: variantCodename,
+                    taxonomyElementCodename: taxonomyElementCodename
+                })
+            });
+            if (!response.ok) {
+                throw new Error("Proxy API returned " + response.status + " " + response.statusText + ".");
+            }
+
+            var data = await response.json();
+            taxonomyValues = extractTaxonomyValueArray(data, taxonomyElementCodename);
+
+            // If current selected value disappeared from source taxonomy, clear stored value.
+            if (currentValue) {
+                var stillExists = taxonomyValues.some(function (term) {
+                    return term.codename === currentValue;
+                });
+                if (!stillExists) {
+                    currentValue = null;
+                    if (isCustomElement) {
+                        CustomElement.setValue(null);
+                    }
+                }
+            }
+
+            renderOptions();
+            isLoading = false;
+
+            // If a refresh request arrived while loading, execute one more pass.
+            if (hasPendingRefresh) {
+                hasPendingRefresh = false;
+                refreshTaxonomyValues();
+            }
+        }
+
+        async function refreshTaxonomyValues() {
+            if (!contextData) {
+                return;
+            }
+            try {
+                await loadTaxonomyValues(
+                    contextData.projectId,
+                    contextData.item && contextData.item.codename,
+                    contextData.variant && contextData.variant.codename,
+                    configData
+                );
+            } catch (error) {
+                isLoading = false;
+                console.error(error);
+                setStatus("Error: " + error.message, true);
+            }
+        }
+
+        function getObservedElementCodenames() {
+            if (Array.isArray(configData.observedElementCodenames)) {
+                return configData.observedElementCodenames;
+            }
+            if (configData.observeAllElementChanges === true) {
+                return [];
+            }
+            return [configData.taxonomyElementCodename || "taxonomy_element"];
+        }
+
+        function refreshAfterElementChange() {
+            changeRefreshTimeouts.forEach(function (timeoutId) {
+                clearTimeout(timeoutId);
+            });
+            changeRefreshTimeouts = [];
+
+            // Staged refresh handles eventual consistency without brute-force polling.
+            var delays = Array.isArray(configData.changeFollowupDelaysMs)
+                ? configData.changeFollowupDelaysMs
+                : [0, 1200, 3000];
+
+            delays.forEach(function (delayMs) {
+                var timeoutId = setTimeout(function () {
+                    refreshTaxonomyValues();
+                }, delayMs);
+                changeRefreshTimeouts.push(timeoutId);
+            });
+        }
+
+        function registerElementObserver() {
+            if (hasObserverRegistration || typeof CustomElement.observeElementChanges !== "function") {
+                return;
+            }
+            hasObserverRegistration = true;
+
+            var observedElementCodenames = getObservedElementCodenames();
+            CustomElement.observeElementChanges(observedElementCodenames, function (changedElementCodenames) {
+                if (!Array.isArray(changedElementCodenames)) {
+                    return;
+                }
+
+                var taxonomyElementCodename = configData.taxonomyElementCodename || "taxonomy_element";
+                var shouldRefresh =
+                    observedElementCodenames.length === 0 ||
+                    changedElementCodenames.indexOf(taxonomyElementCodename) !== -1;
+
+                if (shouldRefresh) {
+                    refreshAfterElementChange();
+                }
+            });
+        }
+
+        function runInStandaloneMode() {
+            setStatus("Standalone mode: this element loads taxonomy values from proxy in Kontent.ai.");
+            taxonomyValues = [
+                { name: "Brno", codename: "city" },
+                { name: "Denver", codename: "denver" }
+            ];
+            currentValue = "city";
+            renderOptions();
+        }
+
+        function initCustomElement() {
+            try {
+                CustomElement.init(async function (element, context) {
+                    isCustomElement = true;
+                    currentValue = typeof element.value === "string" ? element.value : null;
+                    updateDisabled(element.disabled);
+                    contextData = context;
+
+                    try {
+                        configData = parseConfig(element.config);
+                        registerElementObserver();
+                        await refreshTaxonomyValues();
+                    } catch (error) {
+                        console.error(error);
+                        setStatus("Error: " + error.message, true);
+                    }
+
+                    updateSize();
+                });
+
+                CustomElement.onDisabledChanged(updateDisabled);
+            } catch (error) {
+                console.error(error);
+                isCustomElement = false;
+                runInStandaloneMode();
+            }
+        }
+
+        initCustomElement();
+    </script>
+</body>
+</html>
