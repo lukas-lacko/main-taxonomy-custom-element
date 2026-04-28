@@ -1,0 +1,14 @@
+{
+  "name": "kontent-taxonomy-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Proxy for secure Kontent Preview API taxonomy reads",
+  "main": "proxy-server.js",
+  "scripts": {
+    "start": "node proxy-server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}
