@@ -1,4 +1,6 @@
-# Taxonomy Custom Element + Secure Proxy
+# Main Taxonomy Custom Element + Proxy
+
+Main Taxonomy Custom Element that allows selecting main taxonomy of related taxonomy element.
 
 This solution has two deployable parts:
 
