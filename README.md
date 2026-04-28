@@ -1,4 +1,4 @@
-# Main Taxonomy Custom Element + Proxy
+# Main Taxonomy Custom Element + Proxy (Proof of Concept)
 
 Main Taxonomy Custom Element that allows selecting main taxonomy of related taxonomy element.
 
